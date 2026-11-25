@@ -1,0 +1,17 @@
+# Builds a Prusa Connect server with this driver compiled in.
+#
+# Run it from the prusa-connect checkout:
+#
+#   make compose-build CONFIG=../prusa-driver-klipper/build.yaml
+#
+# Every path below is read against this file's own directory.
+core:
+  path: ../prusa-connect
+
+adapters:
+  - module: example.com/prusa-driver-klipper
+    path: .
+
+config: ../prusa-connect/config/config.yaml
+variant: full
+output: ../prusa-connect/bin/server-klipper
