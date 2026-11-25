@@ -19,6 +19,7 @@ to the same address.
 | files | the `gcodes` folder as one storage: list, file details with the slicer's preview, print time, layer height and material, create and delete folders, delete files, live change events |
 | uploads | streaming HTTP upload with progress, checked by listing the folder afterwards |
 | controls | home, jog X/Y/Z, extrude/retract, disable motors, speed and flow, nozzle/bed/chamber targets, G-code console, bed mesh, load/unload filament macros, firmware restart, clear a finished print |
+| power | switches the Moonraker `[power]` device that feeds the printer, such as a smart plug, with Set addon power. It works while Klipper is shut down: switch the board on, then Restart |
 | errors | Klipper shutdown shows as `ERROR`, and Restart (reset printer) sends `FIRMWARE_RESTART`. When Klipper reconnects to Moonraker, the server dials the printer again |
 
 The machine's own object list decides what is offered. For example, a printer
@@ -106,6 +107,7 @@ Endpoint `options`:
 | `serial` | serial number | none |
 | `unit_uid` | stable identity. Set it when the address can change | derived from the address |
 | `api_key` | Moonraker API key for this printer | the connector's `api_key` |
+| `power_device` | Moonraker power device to switch | the device named `printer`, or the only one |
 
 Endpoint options can be read by anyone allowed to list endpoints. If that
 matters, put the API key in the connector config instead, or let Moonraker

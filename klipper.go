@@ -20,6 +20,8 @@
 //	serial    the serial number. Empty reports none
 //	unit_uid  the stable identity. Empty derives one from the address
 //	api_key   the Moonraker API key, for a Moonraker that requires one
+//	power_device  the Moonraker power device that feeds the printer. Empty
+//	          takes the device named "printer", or the only device there is
 //
 // Set unit_uid where an address can change. The printer id is derived from it.
 package klipper
@@ -344,6 +346,7 @@ func (d *Driver) Connect(
 
 	session := newSession(conn, d.settings, d.log)
 	session.files = newFiles(session, addr.http, key, d.http, d.settings.storage)
+	session.powerWanted = strings.TrimSpace(endpoint.Options[optionPower])
 
 	resolved, err := session.handshake(ctx, d.Baseline().Intersect(profile))
 	if err != nil {
@@ -392,6 +395,7 @@ const (
 	optionSerial  = "serial"
 	optionUnitUID = "unit_uid"
 	optionAPIKey  = "api_key" //nolint:gosec // an option name, not a secret.
+	optionPower   = "power_device"
 
 	defaultVendor = "Klipper"
 	defaultModel  = "Klipper"

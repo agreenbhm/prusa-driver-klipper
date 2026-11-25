@@ -84,6 +84,11 @@ type Session struct {
 
 	reader reader
 
+	// powerWanted is the power device the endpoint named, and power is the
+	// one this session switches. Empty power is a machine with none.
+	powerWanted string
+	power       string
+
 	// first is the reading the subscription answered with, emitted by the
 	// reader goroutine before its loop.
 	first []connectorapi.StatePatch
@@ -165,6 +170,11 @@ func (s *Session) handshake(ctx context.Context, offered connectorapi.Set) (conn
 
 	s.probeRoot(ctx)
 
+	powered, err := s.probePower(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	var opening statusReply
 	if err = s.callSync(ctx, methodObjectsSubscribe, objectsParam(s.asked), &opening); err != nil {
 		return nil, err
@@ -175,6 +185,7 @@ func (s *Session) handshake(ctx context.Context, offered connectorapi.Set) (conn
 
 	s.first = append(toolPatches(dumped, extruders), buildVolumePatches(dumped)...)
 	s.first = appendText(s.first, hostnamePath, s.reported.Hostname)
+	s.first = append(s.first, powered...)
 	s.first = append(s.first, s.reader.patchesFrom(opening.Status, time.Now())...)
 
 	s.probe = probe(machine{
@@ -182,6 +193,7 @@ func (s *Session) handshake(ctx context.Context, offered connectorapi.Set) (conn
 		heaters:   heaterBounds(dumped, heaterExtruder, heaterBed, objectChamberHeater),
 		extruders: len(extruders),
 		chamber:   chamber,
+		power:     s.power,
 	}, offered)
 
 	return offered.Intersect(s.probe), nil
@@ -345,6 +357,16 @@ func (s *Session) callFor(cmd connectorapi.Command) (outgoing, error) {
 	switch cmd.Verb {
 	case VerbSendStateInfo:
 		return outgoing{method: methodObjectsQuery, params: objectsParam(s.asked), timeout: s.settings.timeout}, nil
+	case VerbPower:
+		action := "off"
+		if cmd.Args[argPower] == "true" {
+			action = "on"
+		}
+
+		return outgoing{
+			method: methodPowerPost, params: map[string]any{"device": s.power, "action": action},
+			timeout: s.settings.gcodeTimeout,
+		}, nil
 	case VerbStartPrint:
 		filename, err := s.files.relative(cmd.Args[argPath])
 		if err != nil {
@@ -561,6 +583,8 @@ func (s *Session) dispatch(data []byte) {
 		s.update(frame.Params)
 	case notifyFilelistChanged:
 		s.files.changed(frame.Params)
+	case notifyPowerChanged:
+		s.powerChanged(frame.Params)
 	}
 }
 
@@ -661,4 +685,92 @@ func (s *Session) ping() error {
 	}
 
 	return nil
+}
+
+// powerPath is where the power device's state lands: true while it is on.
+const powerPath = "/addon_power"
+
+// probePower picks the power device this session switches, and answers its
+// state as patches. A Moonraker with no [power] section has none, which is
+// not an error.
+func (s *Session) probePower(ctx context.Context) ([]connectorapi.StatePatch, error) {
+	var listed powerList
+
+	err := s.callSync(ctx, methodPowerDevices, nil, &listed)
+	if errors.Is(err, ErrRefused) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	chosen, ok := pickPower(listed.Devices, s.powerWanted)
+	if !ok {
+		if s.powerWanted != "" {
+			s.log.Warn("the endpoint names a power device Moonraker does not have", "power_device", s.powerWanted)
+		}
+
+		return nil, nil
+	}
+
+	s.power = chosen.Device
+
+	return powerPatch(chosen.Status), nil
+}
+
+// pickPower is the named device, or the one called "printer", or the only one.
+func pickPower(devices []powerDevice, wanted string) (powerDevice, bool) {
+	for _, name := range []string{wanted, "printer"} {
+		if name == "" {
+			continue
+		}
+
+		for _, device := range devices {
+			if device.Device == name {
+				return device, true
+			}
+		}
+
+		if name == wanted {
+			return powerDevice{}, false
+		}
+	}
+
+	if len(devices) == 1 {
+		return devices[0], true
+	}
+
+	return powerDevice{}, false
+}
+
+// powerPatch is a device status as the boolean the tree carries. A status that
+// is neither on nor off, such as "error", removes the reading.
+func powerPatch(status string) []connectorapi.StatePatch {
+	switch status {
+	case "on":
+		return []connectorapi.StatePatch{{Path: powerPath, Value: json.RawMessage("true")}}
+	case "off":
+		return []connectorapi.StatePatch{{Path: powerPath, Value: json.RawMessage("false")}}
+	default:
+		return []connectorapi.StatePatch{{Path: powerPath, Value: json.RawMessage("null")}}
+	}
+}
+
+// powerChanged reads one notify_power_changed.
+func (s *Session) powerChanged(params json.RawMessage) {
+	var changed []powerDevice
+	if json.Unmarshal(params, &changed) != nil {
+		s.refused.Add(1)
+
+		return
+	}
+
+	for _, device := range changed {
+		if device.Device == s.power && s.power != "" {
+			for _, patch := range powerPatch(device.Status) {
+				s.report(patch)
+			}
+		}
+	}
 }
