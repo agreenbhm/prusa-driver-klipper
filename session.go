@@ -358,9 +358,9 @@ func (s *Session) callFor(cmd connectorapi.Command) (outgoing, error) {
 	case VerbSendStateInfo:
 		return outgoing{method: methodObjectsQuery, params: objectsParam(s.asked), timeout: s.settings.timeout}, nil
 	case VerbPower:
-		action := "off"
-		if cmd.Args[argPower] == "true" {
-			action = "on"
+		action := "on"
+		if cmd.Args[argPower] == "false" {
+			action = "off"
 		}
 
 		return outgoing{

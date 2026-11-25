@@ -60,6 +60,7 @@ var stateGuards = map[connectorapi.Capability][]connectorapi.StateName{
 	VerbSendFileInfo:    everyState(),
 	VerbSendGcode:       everyState(),
 	VerbResetPrinter:    everyState(),
+	VerbReset:           everyState(),
 	// Moonraker refuses to switch a device locked while printing, and this
 	// keeps the control away from a running print as well.
 	VerbPower: {stateIdle, stateFinished, stateStopped, stateError, stateBusy},
@@ -104,6 +105,7 @@ var stateTransitions = []connectorapi.Transition{
 	{From: stateFinished, To: stateIdle},
 	{From: stateStopped, To: stateIdle},
 	{From: stateError, To: stateIdle, Verb: VerbResetPrinter},
+	{From: stateError, To: stateIdle, Verb: VerbReset},
 	{From: stateError, To: stateIdle},
 	{From: stateIdle, To: stateBusy},
 	{From: stateBusy, To: stateIdle},

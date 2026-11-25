@@ -132,6 +132,27 @@ func TestCommandsBecomeKlipperGcode(t *testing.T) {
 	}
 }
 
+func TestTheTwoRestarts(t *testing.T) {
+	t.Parallel()
+
+	host := startMachine(t, klippersim.Options{})
+	s := connect(t, host)
+
+	for verb, method := range map[connectorapi.Capability]string{
+		klipper.VerbReset:        "printer.firmware_restart",
+		klipper.VerbResetPrinter: "printer.restart",
+	} {
+		result, err := s.Do(t.Context(), connectorapi.Command{Verb: verb})
+		if err != nil || !result.OK {
+			t.Fatalf("%s: %v %+v", verb, err, result)
+		}
+
+		if calls := host.Calls(); calls[len(calls)-1] != method {
+			t.Errorf("%s called %s, want %s", verb, calls[len(calls)-1], method)
+		}
+	}
+}
+
 func TestAMachineRefusalIsAResult(t *testing.T) {
 	t.Parallel()
 
@@ -380,11 +401,9 @@ func TestPowerDevice(t *testing.T) {
 
 	tree.waitFor(t, "/addon_power", "false")
 
-	result, err := s.Do(t.Context(), connectorapi.Command{
-		Verb: klipper.VerbPower, Args: map[string]string{"addon_power": "true"},
-	})
+	result, err := s.Do(t.Context(), connectorapi.Command{Verb: klipper.VerbPower})
 	if err != nil || !result.OK {
-		t.Fatalf("power on: %v %+v", err, result)
+		t.Fatalf("power with no argument: %v %+v", err, result)
 	}
 
 	if host.PowerStatus("kp3s_plug") != "on" {
@@ -392,6 +411,12 @@ func TestPowerDevice(t *testing.T) {
 	}
 
 	tree.waitFor(t, "/addon_power", "true")
+
+	if _, err = s.Do(t.Context(), connectorapi.Command{
+		Verb: klipper.VerbPower, Args: map[string]string{"addon_power": "false"},
+	}); err != nil || host.PowerStatus("kp3s_plug") != "off" {
+		t.Errorf("power off: %v, status %s", err, host.PowerStatus("kp3s_plug"))
+	}
 
 	none := connect(t, startMachine(t, klippersim.Options{Power: map[string]string{}}))
 	if caps, _ = none.Capabilities(); caps.Has(klipper.VerbPower) {

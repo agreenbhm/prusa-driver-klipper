@@ -417,7 +417,8 @@ func (h *Host) answer(id uint64, method string, params json.RawMessage) map[stri
 		h.mu.Unlock()
 
 		return resultFrame(id, "ok")
-	case "printer.print.pause", "printer.print.resume", "printer.print.cancel", "printer.firmware_restart":
+	case "printer.print.pause", "printer.print.resume", "printer.print.cancel", "printer.firmware_restart",
+		"printer.restart":
 		return resultFrame(id, "ok")
 	case "machine.device_power.devices":
 		if len(h.power) == 0 {

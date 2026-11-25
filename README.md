@@ -19,8 +19,8 @@ to the same address.
 | files | the `gcodes` folder as one storage: list, file details with the slicer's preview, print time, layer height and material, create and delete folders, delete files, live change events |
 | uploads | streaming HTTP upload with progress, checked by listing the folder afterwards |
 | controls | home, jog X/Y/Z, extrude/retract, disable motors, speed and flow, nozzle/bed/chamber targets, G-code console, bed mesh, load/unload filament macros, firmware restart, clear a finished print |
-| power | switches the Moonraker `[power]` device that feeds the printer, such as a smart plug, with Set addon power. It works while Klipper is shut down: switch the board on, then Restart |
-| errors | Klipper shutdown shows as `ERROR`, and Restart (reset printer) sends `FIRMWARE_RESTART`. When Klipper reconnects to Moonraker, the server dials the printer again |
+| power | switches the Moonraker `[power]` device that feeds the printer, such as a smart plug, with Set addon power: leave the field empty to switch on, write `false` to switch off. It works while Klipper is shut down: switch the board on, then Restart |
+| errors | Klipper shutdown shows as `ERROR`. Reset printer sends `FIRMWARE_RESTART` and Restart printer sends `RESTART`. When Klipper reconnects to Moonraker, the server dials the printer again |
 
 The machine's own object list decides what is offered. For example, a printer
 with no `[pause_resume]` is not offered pause, one with no `[bed_mesh]` is not

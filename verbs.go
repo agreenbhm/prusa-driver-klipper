@@ -43,7 +43,12 @@ const (
 	VerbMeshLeveling   = connectorapi.Capability("core.command.mesh_bed_leveling")
 	VerbLoadFilament   = connectorapi.Capability("core.command.load_filament")
 	VerbUnloadFilament = connectorapi.Capability("core.command.unload_filament")
-	VerbResetPrinter   = connectorapi.Capability("core.command.reset_printer")
+	// VerbResetPrinter is "Restart printer", a software restart: Klipper's
+	// RESTART, which reloads the configuration on the host.
+	VerbResetPrinter = connectorapi.Capability("core.command.reset_printer")
+	// VerbReset is "Reset printer", which restarts the control board:
+	// FIRMWARE_RESTART, which also resets the MCU and clears a shutdown.
+	VerbReset = connectorapi.Capability("core.command.reset")
 	// VerbPower switches the Moonraker power device that feeds the printer,
 	// such as a smart plug. It works while Klipper is shut down, which is
 	// when it is needed: switch the board on, then restart the firmware.
@@ -231,8 +236,11 @@ func (d *Driver) Baseline() connectorapi.Set {
 		ArgLoadFilament:    text(maxFilamentBytes, false),
 		VerbUnloadFilament: flag(),
 		VerbResetPrinter:   flag(),
+		VerbReset:          flag(),
 		VerbPower:          flag(),
-		ArgPower:           connectorapi.Value{Flag: true, Kind: connectorapi.KindBoolean, Required: true},
+		// Optional, and on when left out, so the button alone switches the
+		// printer on.
+		ArgPower: connectorapi.Value{Flag: true, Kind: connectorapi.KindBoolean, Default: "true"},
 	}
 }
 
@@ -258,7 +266,7 @@ func probe(m machine, resolved connectorapi.Set) connectorapi.Set {
 	// Every Klipper machine answers a status query, runs a G-code script,
 	// restarts its firmware and serves its gcodes folder.
 	carry(claimed, resolved,
-		VerbSendStateInfo, VerbSendGcode, ArgGcode, VerbResetPrinter,
+		VerbSendStateInfo, VerbSendGcode, ArgGcode, VerbResetPrinter, VerbReset,
 		VerbSendInfo, VerbSendFileInfo, ArgFileInfoPath,
 		VerbCreateFolder, ArgCreateFolderPath, VerbDeleteFile, ArgDeleteFilePath,
 		VerbDeleteFolder, ArgDeleteFolderPath, FeatureUpload)
@@ -395,6 +403,8 @@ func methodFor(verb connectorapi.Capability) (method string, ok bool) {
 	case VerbStopPrint:
 		return methodPrintCancel, true
 	case VerbResetPrinter:
+		return methodRestart, true
+	case VerbReset:
 		return methodFirmwareRestart, true
 	default:
 		return "", false
