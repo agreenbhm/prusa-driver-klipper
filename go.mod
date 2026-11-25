@@ -3,7 +3,7 @@
 // It is built against a checkout of prusa-connect, because the sdk module is
 // not published yet. The replace below points at that checkout. Change it if
 // your checkout is somewhere else.
-module example.com/prusa-driver-klipper
+module github.com/agreenbhm/prusa-driver-klipper
 
 go 1.26.11
 

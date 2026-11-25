@@ -9,7 +9,7 @@ core:
   path: ../prusa-connect
 
 adapters:
-  - module: example.com/prusa-driver-klipper
+  - module: github.com/agreenbhm/prusa-driver-klipper
     path: .
 
 config: ../prusa-connect/config/config.yaml

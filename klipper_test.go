@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"example.com/prusa-driver-klipper"
-	"example.com/prusa-driver-klipper/klippersim"
+	"github.com/agreenbhm/prusa-driver-klipper"
+	"github.com/agreenbhm/prusa-driver-klipper/klippersim"
 
 	"github.com/prusa3d/prusa-connect/sdk/connectorapi"
 	"github.com/prusa3d/prusa-connect/sdk/connectorapi/connectorapitest"

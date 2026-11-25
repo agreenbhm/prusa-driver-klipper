@@ -51,7 +51,7 @@ prusa-connect placed beside this folder:
 ```
 prusa_connect/
 ├── prusa-connect/          # git clone https://github.com/prusa3d/prusa-connect
-└── prusa-driver-klipper/   # this folder
+└── prusa-driver-klipper/   # git clone https://github.com/agreenbhm/prusa-driver-klipper
 ```
 
 If the checkout is somewhere else, change the `replace` line in `go.mod` and
@@ -112,9 +112,8 @@ trust the server's address (`[authorization] trusted_clients`).
 ## Connector type name
 
 Inside a server, the type is `klipper`. If another module also registers
-`klipper`, use the qualified name `com.example.aux.prusa-driver-klipper/klipper`.
-The qualified name comes from the module path in `go.mod`. Rename the module
-(for example to `github.com/<you>/prusa-driver-klipper`) before you publish it.
+`klipper`, use the qualified name `com.github.aux.agreenbhm.prusa-driver-klipper/klipper`.
+The qualified name comes from the module path in `go.mod`.
 
 ## Simulator
 

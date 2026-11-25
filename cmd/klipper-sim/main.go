@@ -32,7 +32,7 @@ import (
 	"fmt"
 	"os"
 
-	"example.com/prusa-driver-klipper/klippersim"
+	"github.com/agreenbhm/prusa-driver-klipper/klippersim"
 )
 
 func main() {
