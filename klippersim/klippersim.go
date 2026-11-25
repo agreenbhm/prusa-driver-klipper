@@ -290,6 +290,14 @@ func (h *Host) File(name string) (string, bool) {
 	return content, ok
 }
 
+// SetKlippyState changes what printer.info answers, as Klipper does while it
+// restarts.
+func (h *Host) SetKlippyState(state string) {
+	h.mu.Lock()
+	h.klippy = state
+	h.mu.Unlock()
+}
+
 // Notify sends a notification with the given params to every connection.
 func (h *Host) Notify(method string, params any) {
 	h.broadcast(map[string]any{"jsonrpc": jsonrpcVersion, "method": method, "params": params})
@@ -393,8 +401,12 @@ func (h *Host) answer(id uint64, method string, params json.RawMessage) map[stri
 
 	switch method {
 	case "printer.info":
+		h.mu.Lock()
+		klippy := h.klippy
+		h.mu.Unlock()
+
 		return resultFrame(id, map[string]any{
-			"state": h.klippy, "state_message": "Printer is " + h.klippy,
+			"state": klippy, "state_message": "Printer is " + klippy,
 			"hostname": h.hostname, "software_version": h.version,
 		})
 	case "printer.objects.list":

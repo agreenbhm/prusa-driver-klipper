@@ -43,11 +43,12 @@ const (
 	VerbMeshLeveling   = connectorapi.Capability("core.command.mesh_bed_leveling")
 	VerbLoadFilament   = connectorapi.Capability("core.command.load_filament")
 	VerbUnloadFilament = connectorapi.Capability("core.command.unload_filament")
-	// VerbResetPrinter is "Restart printer", a software restart: Klipper's
-	// RESTART, which reloads the configuration on the host.
+	// VerbResetPrinter is the red Reset printer button under Controls >
+	// Maintenance: FIRMWARE_RESTART, which resets the MCU, reloads the
+	// configuration and clears a shutdown.
 	VerbResetPrinter = connectorapi.Capability("core.command.reset_printer")
-	// VerbReset is "Reset printer", which restarts the control board:
-	// FIRMWARE_RESTART, which also resets the MCU and clears a shutdown.
+	// VerbReset is Reset printer under Controls > Advanced: Klipper's RESTART,
+	// which reloads the configuration on the host and leaves the MCU alone.
 	VerbReset = connectorapi.Capability("core.command.reset")
 	// VerbPower switches the Moonraker power device that feeds the printer,
 	// such as a smart plug. It works while Klipper is shut down, which is
@@ -403,9 +404,9 @@ func methodFor(verb connectorapi.Capability) (method string, ok bool) {
 	case VerbStopPrint:
 		return methodPrintCancel, true
 	case VerbResetPrinter:
-		return methodRestart, true
-	case VerbReset:
 		return methodFirmwareRestart, true
+	case VerbReset:
+		return methodRestart, true
 	default:
 		return "", false
 	}

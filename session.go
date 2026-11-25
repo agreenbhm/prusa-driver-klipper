@@ -27,6 +27,12 @@ const (
 	readDeadline = 60 * time.Second
 	pingInterval = 20 * time.Second
 	pingTimeout  = 10 * time.Second
+
+	// startupPoll is how often a starting Klipper is asked whether it is up.
+	startupPoll = time.Second
+	// startupWait is how long a connect waits for a starting Klipper before it
+	// gives up and lets the host dial again.
+	startupWait = 30 * time.Second
 )
 
 // ErrSessionEnded reports a call made on a session whose connection has gone.
@@ -87,7 +93,13 @@ type Session struct {
 	// powerWanted is the power device the endpoint named, and power is the
 	// one this session switches. Empty power is a machine with none.
 	powerWanted string
-	power       string
+
+	// objects is the machine's sorted object list, which the probe was
+	// built from. rejoining is set while a Klipper restart is waited out.
+	objects   []string
+	rejoining atomic.Bool
+	feeding   sync.Mutex
+	power     string
 
 	// first is the reading the subscription answered with, emitted by the
 	// reader goroutine before its loop.
@@ -136,24 +148,22 @@ func newSession(conn *websocket.Conn, s settings, log *slog.Logger) *Session {
 // handshake performs the identity exchange and the live probe, and returns the
 // capability set the machine's own answer narrowed the offer to.
 func (s *Session) handshake(ctx context.Context, offered connectorapi.Set) (connectorapi.Set, error) {
-	if err := s.callSync(ctx, methodPrinterInfo, nil, &s.reported); err != nil {
-		return nil, err
-	}
-
 	// Klipper that is shut down still answers, and a person needs to see the
-	// error and restart it. Klipper that is starting or not connected to
-	// Moonraker answers nothing useful yet, so the host dials again later.
-	switch s.reported.State {
-	case "ready", "shutdown", "error":
-	default:
-		return nil, fmt.Errorf("%w: Klipper reports %q: %s",
-			ErrKlippyNotReady, s.reported.State, strings.TrimSpace(s.reported.StateMessage))
+	// error and restart it. Klipper that is starting answers nothing useful
+	// yet, so the connect waits a while for it, and then the host dials again.
+	waitCtx, cancel := context.WithTimeout(ctx, startupWait)
+	defer cancel()
+
+	if err := s.waitForKlippy(waitCtx, s.callSync); err != nil {
+		return nil, err
 	}
 
 	var listed objectList
 	if err := s.callSync(ctx, methodObjectsList, nil, &listed); err != nil {
 		return nil, err
 	}
+
+	s.objects = slices.Sorted(slices.Values(listed.Objects))
 
 	extruders := extrudersOf(listed.Objects)
 	chamber := chamberOf(listed.Objects)
@@ -514,7 +524,11 @@ func (s *Session) write(request rpcRequest) error {
 // read owns every read once the session has begun. It is the only writer to the
 // patch channel, which is what lets it be the only closer.
 func (s *Session) read() {
-	defer close(s.patches)
+	defer func() {
+		s.feeding.Lock()
+		close(s.patches)
+		s.feeding.Unlock()
+	}()
 	defer close(s.done)
 	defer s.hangUp()
 
@@ -573,10 +587,15 @@ func (s *Session) dispatch(data []byte) {
 
 	switch frame.Method {
 	case notifyKlippyDisconnected:
-		// Moonraker drops every subscription. Ending the session makes the
-		// host dial again, and the next handshake subscribes afresh.
-		s.log.Info("Klipper disconnected from Moonraker; reconnecting")
-		s.hangUp()
+		// Moonraker stays up and drops every subscription. The session
+		// shows the machine as starting, waits for Klipper and subscribes
+		// again, so a restart does not take the printer offline.
+		s.log.Info("Klipper disconnected from Moonraker; waiting for it")
+		s.update(json.RawMessage(`[{"webhooks":{"state":"startup"}}]`))
+
+		if s.rejoining.CompareAndSwap(false, true) {
+			go s.rejoin()
+		}
 	case notifyKlippyShutdown:
 		s.update(json.RawMessage(`[{"webhooks":{"state":"shutdown"}}]`))
 	case notifyStatusUpdate:
@@ -620,6 +639,21 @@ func (s *Session) update(params json.RawMessage) {
 		s.refused.Add(1)
 
 		return
+	}
+
+	s.feed(status)
+}
+
+// feed turns one status into patches. The reader goroutine and a rejoin both
+// feed, so the reader's memory and the patch channel are taken one at a time.
+func (s *Session) feed(status map[string]json.RawMessage) {
+	s.feeding.Lock()
+	defer s.feeding.Unlock()
+
+	select {
+	case <-s.done:
+		return
+	default:
 	}
 
 	for _, patch := range s.reader.patchesFrom(status, time.Now()) {
@@ -768,9 +802,102 @@ func (s *Session) powerChanged(params json.RawMessage) {
 
 	for _, device := range changed {
 		if device.Device == s.power && s.power != "" {
+			s.feeding.Lock()
 			for _, patch := range powerPatch(device.Status) {
 				s.report(patch)
 			}
+			s.feeding.Unlock()
 		}
 	}
+}
+
+// caller is callSync or callInto: how a call is made before and after the
+// reader goroutine owns the connection.
+type caller func(ctx context.Context, method string, params, into any) error
+
+// waitForKlippy asks printer.info until Klipper is ready, shut down or in
+// error, and records the answer.
+func (s *Session) waitForKlippy(ctx context.Context, call caller) error {
+	for {
+		// A refusal is Moonraker that has no Klipper to ask yet.
+		err := call(ctx, methodPrinterInfo, nil, &s.reported)
+		if err != nil && !errors.Is(err, ErrRefused) && ctx.Err() == nil {
+			return err
+		}
+
+		switch s.reported.State {
+		case "ready", "shutdown", "error":
+			return nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%w: Klipper reports %q: %s",
+				ErrKlippyNotReady, s.reported.State, strings.TrimSpace(s.reported.StateMessage))
+		case <-time.After(startupPoll):
+		}
+	}
+}
+
+// rejoin waits out a Klipper restart and subscribes again. A machine whose
+// objects changed, because its configuration did, is hung up so the host dials
+// it again and the probe is built afresh.
+func (s *Session) rejoin() {
+	defer s.rejoining.Store(false)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		select {
+		case <-s.done:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	call := func(ctx context.Context, method string, params, into any) error {
+		rpcErr, err := s.callInto(ctx, method, params, into)
+		if err != nil {
+			return err
+		}
+
+		if rpcErr != nil {
+			return fmt.Errorf("%w: %s", ErrRefused, rpcErr.Message)
+		}
+
+		return nil
+	}
+
+	if err := s.waitForKlippy(ctx, call); err != nil {
+		s.log.Info("Klipper did not come back; hanging up", "error", err.Error())
+		s.hangUp()
+
+		return
+	}
+
+	var listed objectList
+	if err := call(ctx, methodObjectsList, nil, &listed); err != nil {
+		s.hangUp()
+
+		return
+	}
+
+	if !slices.Equal(slices.Sorted(slices.Values(listed.Objects)), s.objects) {
+		s.log.Info("Klipper's objects changed; reconnecting to probe it again")
+		s.hangUp()
+
+		return
+	}
+
+	var opening statusReply
+	if err := call(ctx, methodObjectsSubscribe, objectsParam(s.asked), &opening); err != nil {
+		s.hangUp()
+
+		return
+	}
+
+	s.log.Info("Klipper is back", "state", s.reported.State)
+
+	s.feed(opening.Status)
 }

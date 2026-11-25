@@ -139,8 +139,8 @@ func TestTheTwoRestarts(t *testing.T) {
 	s := connect(t, host)
 
 	for verb, method := range map[connectorapi.Capability]string{
-		klipper.VerbReset:        "printer.firmware_restart",
-		klipper.VerbResetPrinter: "printer.restart",
+		klipper.VerbReset:        "printer.restart",
+		klipper.VerbResetPrinter: "printer.firmware_restart",
 	} {
 		result, err := s.Do(t.Context(), connectorapi.Command{Verb: verb})
 		if err != nil || !result.OK {
@@ -429,35 +429,50 @@ func TestPowerDevice(t *testing.T) {
 	}
 }
 
-func TestAKlippyRestartEndsTheSession(t *testing.T) {
+func TestAKlippyRestartKeepsTheSession(t *testing.T) {
 	t.Parallel()
 
 	host := startMachine(t, klippersim.Options{})
-	session := connect(t, host)
+	s := connect(t, host)
+	tree := watch(t, s)
 
+	tree.waitFor(t, "/state", `"IDLE"`)
+
+	host.SetKlippyState("startup")
 	host.Notify("notify_klippy_disconnected", nil)
+	tree.waitFor(t, "/state", `"BUSY"`)
 
-	deadline := time.After(3 * time.Second)
+	host.SetKlippyState("ready")
+	tree.waitFor(t, "/state", `"IDLE"`)
 
-	for {
-		select {
-		case _, open := <-session.State():
-			if !open {
-				return
-			}
-		case <-deadline:
-			t.Fatal("the session outlived Klipper")
-		}
+	if n := strings.Count(strings.Join(host.Calls(), " "), "printer.objects.subscribe"); n != 2 {
+		t.Errorf("subscribed %d times, want 2", n)
 	}
 }
 
-func TestAStartingKlipperIsNotConnected(t *testing.T) {
+func TestAStartingKlipperIsWaitedFor(t *testing.T) {
+	t.Parallel()
+
+	host := startMachine(t, klippersim.Options{KlippyState: "startup"})
+
+	time.AfterFunc(1500*time.Millisecond, func() { host.SetKlippyState("ready") })
+
+	s := connect(t, host)
+	if s.Identity().Model == "" {
+		t.Error("no identity")
+	}
+}
+
+func TestAKlipperThatNeverStartsIsNotConnected(t *testing.T) {
 	t.Parallel()
 
 	host := startMachine(t, klippersim.Options{KlippyState: "startup"})
 	driver := klipper.NewDriver(0)
 
-	_, err := driver.Connect(t.Context(), connectorapi.Endpoint{Address: host.Address()}, driver.Baseline())
+	ctx, cancel := context.WithTimeout(t.Context(), 1500*time.Millisecond)
+	defer cancel()
+
+	_, err := driver.Connect(ctx, connectorapi.Endpoint{Address: host.Address()}, driver.Baseline())
 	if !errors.Is(err, klipper.ErrKlippyNotReady) {
 		t.Errorf("connect answered %v", err)
 	}
