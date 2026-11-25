@@ -46,7 +46,8 @@ so it sends plain `.gcode`.
 ## Build a server with this driver
 
 The SDK is not published yet, so the driver builds against a checkout of
-prusa-connect placed beside this folder:
+prusa-connect placed beside this folder. You need Go 1.26.11 or later, make,
+Node and pnpm:
 
 ```
 prusa_connect/
@@ -59,8 +60,9 @@ the paths in `build.yaml`.
 
 ```sh
 cd prusa-driver-klipper && go test ./...                         # conformance suite + driver tests
-cd ../prusa-connect && make compose-build CONFIG=../prusa-driver-klipper/build.yaml
-# → bin/server-klipper
+cd ../prusa-connect
+make embed-app                                                    # build the web app (needs Node and pnpm), once per checkout
+make compose-build CONFIG=../prusa-driver-klipper/build.yaml      # → bin/server-klipper
 ```
 
 ## Configure it
