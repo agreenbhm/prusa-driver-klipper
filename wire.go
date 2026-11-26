@@ -19,9 +19,6 @@ const (
 	methodGcodeScript      = "printer.gcode.script"
 	methodFirmwareRestart  = "printer.firmware_restart"
 
-	methodPowerDevices = "machine.device_power.devices"
-	methodPowerPost    = "machine.device_power.post_device"
-
 	methodGetDirectory    = "server.files.get_directory"
 	methodFileMetadata    = "server.files.metadata"
 	methodPostDirectory   = "server.files.post_directory"
@@ -43,9 +40,6 @@ const (
 	notifyKlippyShutdown = "notify_klippy_shutdown"
 	// notifyFilelistChanged says a file or a folder changed under a root.
 	notifyFilelistChanged = "notify_filelist_changed"
-	// notifyPowerChanged says a power device switched. Its params are the
-	// devices that changed.
-	notifyPowerChanged = "notify_power_changed"
 )
 
 // gcodesRoot is the Moonraker root that holds print files. It is the only root
@@ -220,18 +214,6 @@ type filelistItem struct {
 	Root     string  `json:"root"`
 	Size     int64   `json:"size"`
 	Modified float64 `json:"modified"`
-}
-
-// powerDevice is one device Moonraker's [power] sections declare, such as a
-// smart plug that feeds the printer's mainboard.
-type powerDevice struct {
-	Device string `json:"device"`
-	Status string `json:"status"`
-}
-
-// powerList is what machine.device_power.devices answers.
-type powerList struct {
-	Devices []powerDevice `json:"devices"`
 }
 
 // uploadReply is what POST /server/files/upload answers.

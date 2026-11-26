@@ -47,10 +47,6 @@ const (
 	// Maintenance: FIRMWARE_RESTART, which resets the MCU, reloads the
 	// configuration and clears a shutdown.
 	VerbResetPrinter = connectorapi.Capability("core.command.reset_printer")
-	// VerbPower switches the Moonraker power device that feeds the printer,
-	// such as a smart plug. It works while Klipper is shut down, which is
-	// when it is needed: switch the board on, then restart the firmware.
-	VerbPower = connectorapi.Capability("core.command.set_addon_power")
 
 	// The file verbs. The host checks them before it calls Filesystem,
 	// FileManager or Transfers on the session; they never reach Do.
@@ -80,7 +76,6 @@ const (
 	argGcode    = "gcode"
 	argObjectID = "id"
 	argFilament = "filament"
-	argPower    = "addon_power"
 )
 
 // The argument keys.
@@ -105,7 +100,6 @@ var (
 	ArgGcode            = connectorapi.ArgumentKey(VerbSendGcode, argGcode)
 	ArgCancelObjectID   = connectorapi.ArgumentKey(VerbCancelObject, argObjectID)
 	ArgLoadFilament     = connectorapi.ArgumentKey(VerbLoadFilament, argFilament)
-	ArgPower            = connectorapi.ArgumentKey(VerbPower, argPower)
 	ArgFileInfoPath     = connectorapi.ArgumentKey(VerbSendFileInfo, argPath)
 	ArgCreateFolderPath = connectorapi.ArgumentKey(VerbCreateFolder, argPath)
 	ArgDeleteFilePath   = connectorapi.ArgumentKey(VerbDeleteFile, argPath)
@@ -234,10 +228,6 @@ func (d *Driver) Baseline() connectorapi.Set {
 		ArgLoadFilament:    text(maxFilamentBytes, false),
 		VerbUnloadFilament: flag(),
 		VerbResetPrinter:   flag(),
-		VerbPower:          flag(),
-		// Optional, and on when left out, so the button alone switches the
-		// printer on.
-		ArgPower: connectorapi.Value{Flag: true, Kind: connectorapi.KindBoolean, Default: "true"},
 	}
 }
 
@@ -248,7 +238,6 @@ type machine struct {
 	heaters   map[string]heaterConfig
 	extruders int
 	chamber   string
-	power     string
 }
 
 // probe is what this machine says it can do, as a tier that narrows the two
@@ -317,10 +306,6 @@ func probe(m machine, resolved connectorapi.Set) connectorapi.Set {
 
 	if has(macroUnloadFilament) {
 		carry(claimed, resolved, VerbUnloadFilament)
-	}
-
-	if m.power != "" {
-		carry(claimed, resolved, VerbPower, ArgPower)
 	}
 
 	return claimed

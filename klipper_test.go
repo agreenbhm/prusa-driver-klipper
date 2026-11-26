@@ -386,48 +386,6 @@ func TestTelemetry(t *testing.T) {
 	tree.waitFor(t, "/state", `"ERROR"`)
 }
 
-func TestPowerDevice(t *testing.T) {
-	t.Parallel()
-
-	host := startMachine(t, klippersim.Options{Power: map[string]string{"kp3s_plug": "off"}})
-	s := connect(t, host)
-	tree := watch(t, s)
-
-	caps, _ := s.Capabilities()
-	if !caps.Has(klipper.VerbPower) {
-		t.Fatal("a machine with one power device is not offered power")
-	}
-
-	tree.waitFor(t, "/addon_power", "false")
-
-	result, err := s.Do(t.Context(), connectorapi.Command{Verb: klipper.VerbPower})
-	if err != nil || !result.OK {
-		t.Fatalf("power with no argument: %v %+v", err, result)
-	}
-
-	if host.PowerStatus("kp3s_plug") != "on" {
-		t.Error("the device was not switched on")
-	}
-
-	tree.waitFor(t, "/addon_power", "true")
-
-	if _, err = s.Do(t.Context(), connectorapi.Command{
-		Verb: klipper.VerbPower, Args: map[string]string{"addon_power": "false"},
-	}); err != nil || host.PowerStatus("kp3s_plug") != "off" {
-		t.Errorf("power off: %v, status %s", err, host.PowerStatus("kp3s_plug"))
-	}
-
-	none := connect(t, startMachine(t, klippersim.Options{Power: map[string]string{}}))
-	if caps, _ = none.Capabilities(); caps.Has(klipper.VerbPower) {
-		t.Error("a machine with no power device is offered power")
-	}
-
-	two := connect(t, startMachine(t, klippersim.Options{Power: map[string]string{"a": "on", "b": "on"}}))
-	if caps, _ = two.Capabilities(); caps.Has(klipper.VerbPower) {
-		t.Error("with two devices and none named, the driver guessed one")
-	}
-}
-
 func TestAKlippyRestartKeepsTheSession(t *testing.T) {
 	t.Parallel()
 

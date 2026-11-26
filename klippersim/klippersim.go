@@ -58,10 +58,6 @@ type Options struct {
 	APIKey string
 	// Files is the gcodes folder: path to content. Nil is DefaultFiles.
 	Files map[string]string
-	// Power is the Moonraker power devices and their status. Nil is one
-	// device, "printer", that is off. An empty map is a Moonraker with no
-	// [power] section.
-	Power map[string]string
 	// Addr is where to listen. Empty is an ephemeral loopback port.
 	Addr string
 }
@@ -152,7 +148,6 @@ type Host struct {
 	calls   []string
 	scripts []string
 	printed []string
-	power   map[string]string
 }
 
 type link struct {
@@ -199,11 +194,6 @@ func Start(ctx context.Context, opts Options) (*Host, error) {
 
 	if host.status == nil {
 		host.status = DefaultStatus()
-	}
-
-	host.power = maps.Clone(opts.Power)
-	if opts.Power == nil {
-		host.power = map[string]string{"printer": "off"}
 	}
 
 	if host.files == nil {
@@ -445,23 +435,6 @@ func (h *Host) answer(id uint64, method string, params json.RawMessage) map[stri
 	case "printer.print.pause", "printer.print.resume", "printer.print.cancel", "printer.firmware_restart",
 		"printer.restart":
 		return resultFrame(id, "ok")
-	case "machine.device_power.devices":
-		if len(h.power) == 0 {
-			return errorFrame(id, notFound, "Component power not loaded")
-		}
-
-		h.mu.Lock()
-		var devices []map[string]any
-		for _, name := range slices.Sorted(maps.Keys(h.power)) {
-			devices = append(devices, map[string]any{
-				"device": name, "status": h.power[name], "locked_while_printing": true, "type": "gpio",
-			})
-		}
-		h.mu.Unlock()
-
-		return resultFrame(id, map[string]any{"devices": devices})
-	case "machine.device_power.post_device":
-		return h.switchPower(id, params)
 	case "server.files.get_directory":
 		return h.directory(id, p.Path)
 	case "server.files.metadata":
@@ -637,38 +610,6 @@ func (h *Host) deleteDir(id uint64, rootPath string, force bool) map[string]any 
 	h.fileEvent("delete_dir", rel, 0)
 
 	return resultFrame(id, map[string]any{"item": map[string]any{"path": rel, "root": "gcodes"}, "action": "delete_dir"})
-}
-
-func (h *Host) switchPower(id uint64, params json.RawMessage) map[string]any {
-	var p struct {
-		Device string `json:"device"`
-		Action string `json:"action"`
-	}
-
-	_ = json.Unmarshal(params, &p)
-
-	h.mu.Lock()
-	_, known := h.power[p.Device]
-	if known {
-		h.power[p.Device] = p.Action
-	}
-	h.mu.Unlock()
-
-	if !known {
-		return errorFrame(id, notFound, "No valid power device named "+p.Device)
-	}
-
-	h.Notify("notify_power_changed", []any{map[string]any{"device": p.Device, "status": p.Action}})
-
-	return resultFrame(id, map[string]any{p.Device: p.Action})
-}
-
-// PowerStatus is one power device's status.
-func (h *Host) PowerStatus(device string) string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	return h.power[device]
 }
 
 func (h *Host) fileEvent(action, rel string, size int) {
