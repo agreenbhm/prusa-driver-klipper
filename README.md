@@ -65,6 +65,30 @@ make embed-app                                                    # build the we
 make compose-build CONFIG=../prusa-driver-klipper/build.yaml      # → bin/server-klipper
 ```
 
+## Run it in Docker (Compose or Swarm)
+
+`deploy/Dockerfile` builds the published image with its server binary swapped
+for one that has this driver compiled in. The bundled extensions, entry point,
+health check and user stay as they are. It needs only this repository: the core
+source is cloned at the release tag inside the build.
+
+```sh
+docker buildx build -f deploy/Dockerfile \
+  --build-arg PRUSA_CONNECT_VERSION=0.1.0-beta.2 \
+  --platform linux/amd64,linux/arm64 \
+  -t <registry>/prusa-connect-klipper:0.1.0-beta.2 --push .
+```
+
+Then point the service's `image:` at that tag, add the `klipper` connector to
+its `config.yaml` (below), and redeploy (`docker stack deploy -c stack.yml <stack>`).
+Volumes, database and settings carry over.
+
+- `PRUSA_CONNECT_VERSION` must be the version you already run. The core and the
+  base image are both taken at that tag, and a newer core migrates the database
+  forward with no way back.
+- Upgrade by rebuilding with the new version. The in-app upgrade installs the
+  stock binary, which has no Klipper driver.
+
 ## Configure it
 
 Declare a connector in the server's `config.yaml` (under `core:`):
