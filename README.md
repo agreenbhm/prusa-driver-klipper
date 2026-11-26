@@ -106,14 +106,7 @@ core:
         # api_key: ...        # only if Moonraker requires one; can also be set per printer
 ```
 
-Then tell the server which printers to dial. Each printer is one endpoint:
-
-```sh
-curl -X PUT http://localhost:8080/api/v1/connector-endpoints/voron \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"connector":"klipper","address":"voron.local","enabled":true,
-       "options":{"model":"Voron 2.4","unit_uid":"voron-2.4-serial-123"}}'
-```
+Then add the printers. See [Add a Klipper printer](#add-a-klipper-printer).
 
 `address` can be:
 
@@ -134,6 +127,101 @@ Endpoint `options`:
 Endpoint options can be read by anyone allowed to list endpoints. If that
 matters, put the API key in the connector config instead, or let Moonraker
 trust the server's address (`[authorization] trusted_clients`).
+
+## Add a Klipper printer
+
+The web app's **Add printer** screen is for Prusa printers, which connect to
+the server on their own. The server has to dial a Klipper printer, and as of
+0.1.0-beta.2 the web app has no page for that. You add it once through the API.
+The server calls each printer it dials an *endpoint*.
+
+### 1. Create a credential
+
+In the web app, open **Settings → Credentials → Create credential**. Choose the
+**Administer** scope, because adding an endpoint changes the server's
+configuration. Set it to expire after 1 day, and copy the token. It is shown
+only once.
+
+```sh
+SERVER=https://prusa-connect.example.net   # your server's address
+TOKEN=...                                   # the credential you just created
+```
+
+### 2. Add the printer
+
+Each printer is one endpoint, under a name you choose (`kp3s` below). The name
+can't be changed later.
+
+```sh
+curl -X PUT "$SERVER/api/v1/connector-endpoints/kp3s" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H 'If-None-Match: *' \
+  -d '{"connector":"klipper","address":"192.168.1.50","enabled":true,
+       "options":{"model":"Kingroon KP3S","unit_uid":"kp3s-klipper"}}'
+```
+
+- `connector` is the name of the connector in your `config.yaml`, which is
+  `klipper` in the example above.
+- `address` and `options` are described under [Configure it](#configure-it).
+  Set `unit_uid` to something stable. It decides which printer record this is,
+  so changing it later creates a new printer.
+- `If-None-Match: *` says "create, don't overwrite". The server refuses a write
+  without it.
+
+A `201` means the endpoint was saved. It doesn't mean the printer answered: the
+server dials it right away and keeps trying if it's off. The printer then shows
+in the printer list, usually within a few seconds. If your server asks before
+it admits a printer, approve it there.
+
+### 3. Delete the credential
+
+Delete the credential in **Settings → Credentials** once you're done.
+
+### Change or remove a printer
+
+Every change has to quote the version of the endpoint list it was read from, so
+read the list first and take the `ETag` header:
+
+```sh
+curl -si "$SERVER/api/v1/connector-endpoints" -H "Authorization: Bearer $TOKEN"
+ETAG='"..."'   # the ETag header, quotes included
+```
+
+To change one, send the full endpoint again with `If-Match`. Setting
+`"enabled":false` stops dialling it without removing it.
+
+```sh
+curl -X PUT "$SERVER/api/v1/connector-endpoints/kp3s" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H "If-Match: $ETAG" \
+  -d '{"connector":"klipper","address":"192.168.1.51","enabled":true,
+       "options":{"model":"Kingroon KP3S","unit_uid":"kp3s-klipper"}}'
+```
+
+To remove one:
+
+```sh
+curl -X DELETE "$SERVER/api/v1/connector-endpoints/kp3s" \
+  -H "Authorization: Bearer $TOKEN" -H "If-Match: $ETAG"
+```
+
+Removing the endpoint stops the server dialling the printer. The printer's
+record and history stay, and you can retire it from the web app.
+
+The server's API reference at `$SERVER/docs` lists the same operations under
+*resources*, if you prefer a form to `curl`.
+
+### When the printer doesn't appear
+
+- Check that the server can reach Moonraker:
+  `curl http://<printer>:7125/printer/info` from the server's host or container.
+- If Moonraker requires an API key, add `"api_key"` to `options`, or let it
+  trust the server's address (`[authorization] trusted_clients` in
+  `moonraker.conf`).
+- The server log names each endpoint it dials (`endpoint=kp3s`) and says why a
+  dial failed.
+- While Klipper is starting it can't be reached yet, so the printer shows as
+  offline. It connects once Klipper is ready, shut down or in error.
 
 ## Connector type name
 
