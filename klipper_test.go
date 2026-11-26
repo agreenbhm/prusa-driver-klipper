@@ -438,9 +438,15 @@ func TestAKlippyRestartKeepsTheSession(t *testing.T) {
 
 	tree.waitFor(t, "/state", `"IDLE"`)
 
-	host.SetKlippyState("startup")
+	// Moonraker refuses for the first seconds of a restart, then says
+	// "startup" until Klipper settles.
+	host.SetKlippyState("disconnected")
 	host.Notify("notify_klippy_disconnected", nil)
 	tree.waitFor(t, "/state", `"BUSY"`)
+
+	time.Sleep(1500 * time.Millisecond)
+	host.SetKlippyState("startup")
+	time.Sleep(1500 * time.Millisecond)
 
 	host.SetKlippyState("ready")
 	tree.waitFor(t, "/state", `"IDLE"`)

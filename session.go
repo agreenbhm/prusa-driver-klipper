@@ -819,15 +819,24 @@ type caller func(ctx context.Context, method string, params, into any) error
 // error, and records the answer.
 func (s *Session) waitForKlippy(ctx context.Context, call caller) error {
 	for {
-		// A refusal is Moonraker that has no Klipper to ask yet.
-		err := call(ctx, methodPrinterInfo, nil, &s.reported)
+		// A refusal is Moonraker that has no Klipper to ask yet: it answers
+		// 503 "Klippy Host not connected" for the first seconds of a restart.
+		// The answer goes into a fresh value, so a refusal never leaves the
+		// state of the previous answer to be read as the current one.
+		var info printerInfo
+
+		err := call(ctx, methodPrinterInfo, nil, &info)
 		if err != nil && !errors.Is(err, ErrRefused) && ctx.Err() == nil {
 			return err
 		}
 
-		switch s.reported.State {
-		case "ready", "shutdown", "error":
-			return nil
+		if err == nil {
+			s.reported = info
+
+			switch info.State {
+			case "ready", "shutdown", "error":
+				return nil
+			}
 		}
 
 		select {
@@ -839,9 +848,12 @@ func (s *Session) waitForKlippy(ctx context.Context, call caller) error {
 	}
 }
 
-// rejoin waits out a Klipper restart and subscribes again. A machine whose
-// objects changed, because its configuration did, is hung up so the host dials
-// it again and the probe is built afresh.
+// rejoin waits out a Klipper restart, however long it takes, and subscribes
+// again. With the board unpowered Klipper spends a minute or more starting
+// before it settles in error, and the session stays connected and BUSY
+// through all of it. A machine whose objects changed, because its
+// configuration did or because its board came up, is hung up so the host
+// dials it again and the probe is built afresh.
 func (s *Session) rejoin() {
 	defer s.rejoining.Store(false)
 
@@ -869,35 +881,57 @@ func (s *Session) rejoin() {
 		return nil
 	}
 
-	if err := s.waitForKlippy(ctx, call); err != nil {
-		s.log.Info("Klipper did not come back; hanging up", "error", err.Error())
-		s.hangUp()
+	giveUp := func(why string, err error) {
+		if ctx.Err() == nil {
+			s.log.Info("hanging up so the host dials the printer again", "why", why, "error", err)
+			s.hangUp()
+		}
+	}
+
+	for {
+		if err := s.waitForKlippy(ctx, call); err != nil {
+			giveUp("asking whether Klipper is up failed", err)
+
+			return
+		}
+
+		// Klipper can drop again between two calls, which Moonraker answers
+		// with a refusal: wait for it again.
+		var listed objectList
+
+		err := call(ctx, methodObjectsList, nil, &listed)
+		if errors.Is(err, ErrRefused) {
+			continue
+		}
+
+		if err != nil {
+			giveUp("listing Klipper's objects failed", err)
+
+			return
+		}
+
+		if !slices.Equal(slices.Sorted(slices.Values(listed.Objects)), s.objects) {
+			giveUp("Klipper's objects changed", nil)
+
+			return
+		}
+
+		var opening statusReply
+
+		err = call(ctx, methodObjectsSubscribe, objectsParam(s.asked), &opening)
+		if errors.Is(err, ErrRefused) {
+			continue
+		}
+
+		if err != nil {
+			giveUp("subscribing again failed", err)
+
+			return
+		}
+
+		s.log.Info("Klipper is back", "state", s.reported.State)
+		s.feed(opening.Status)
 
 		return
 	}
-
-	var listed objectList
-	if err := call(ctx, methodObjectsList, nil, &listed); err != nil {
-		s.hangUp()
-
-		return
-	}
-
-	if !slices.Equal(slices.Sorted(slices.Values(listed.Objects)), s.objects) {
-		s.log.Info("Klipper's objects changed; reconnecting to probe it again")
-		s.hangUp()
-
-		return
-	}
-
-	var opening statusReply
-	if err := call(ctx, methodObjectsSubscribe, objectsParam(s.asked), &opening); err != nil {
-		s.hangUp()
-
-		return
-	}
-
-	s.log.Info("Klipper is back", "state", s.reported.State)
-
-	s.feed(opening.Status)
 }

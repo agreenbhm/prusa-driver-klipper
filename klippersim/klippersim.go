@@ -36,6 +36,7 @@ const (
 	methodNotFound    = -32601
 	requestRefused    = 400
 	notFound          = 404
+	klippyDown        = 503
 	diskTotal         = 32 << 30
 )
 
@@ -405,11 +406,23 @@ func (h *Host) answer(id uint64, method string, params json.RawMessage) map[stri
 		klippy := h.klippy
 		h.mu.Unlock()
 
+		if klippy == "disconnected" {
+			return errorFrame(id, klippyDown, "Klippy Host not connected")
+		}
+
 		return resultFrame(id, map[string]any{
 			"state": klippy, "state_message": "Printer is " + klippy,
 			"hostname": h.hostname, "software_version": h.version,
 		})
 	case "printer.objects.list":
+		h.mu.Lock()
+		down := h.klippy == "disconnected"
+		h.mu.Unlock()
+
+		if down {
+			return errorFrame(id, klippyDown, "Klippy Host not connected")
+		}
+
 		return resultFrame(id, map[string]any{"objects": h.objects})
 	case "printer.objects.query", "printer.objects.subscribe":
 		return resultFrame(id, map[string]any{"eventtime": klipperTime, "status": h.reading(params)})
