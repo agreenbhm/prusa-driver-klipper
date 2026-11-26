@@ -20,7 +20,7 @@ to the same address.
 | uploads | streaming HTTP upload with progress, checked by listing the folder afterwards |
 | controls | home, jog X/Y/Z, extrude/retract, disable motors, speed and flow, nozzle/bed/chamber targets, G-code console, bed mesh, load/unload filament macros, firmware restart, clear a finished print |
 | power | switches the Moonraker `[power]` device that feeds the printer, such as a smart plug, with Set addon power: leave the field empty to switch on, write `false` to switch off. It works while Klipper is shut down: switch the board on, then Reset printer |
-| errors | Klipper shutdown shows as `ERROR`. Reset printer (the red button under Controls → Maintenance) sends `FIRMWARE_RESTART`; Reset printer under Controls → Advanced sends `RESTART`. While Klipper restarts the printer shows `BUSY` and stays connected; if Moonraker itself restarts, the server dials it again |
+| errors | Klipper shutdown shows as `ERROR`. Reset printer (the red button under Controls → Maintenance) sends `FIRMWARE_RESTART`, which also does what Klipper's `RESTART` does. While Klipper restarts the printer shows `BUSY` and stays connected; if Moonraker itself restarts, the server dials it again |
 
 The machine's own object list decides what is offered. For example, a printer
 with no `[pause_resume]` is not offered pause, one with no `[bed_mesh]` is not

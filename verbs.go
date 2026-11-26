@@ -47,9 +47,6 @@ const (
 	// Maintenance: FIRMWARE_RESTART, which resets the MCU, reloads the
 	// configuration and clears a shutdown.
 	VerbResetPrinter = connectorapi.Capability("core.command.reset_printer")
-	// VerbReset is Reset printer under Controls > Advanced: Klipper's RESTART,
-	// which reloads the configuration on the host and leaves the MCU alone.
-	VerbReset = connectorapi.Capability("core.command.reset")
 	// VerbPower switches the Moonraker power device that feeds the printer,
 	// such as a smart plug. It works while Klipper is shut down, which is
 	// when it is needed: switch the board on, then restart the firmware.
@@ -237,7 +234,6 @@ func (d *Driver) Baseline() connectorapi.Set {
 		ArgLoadFilament:    text(maxFilamentBytes, false),
 		VerbUnloadFilament: flag(),
 		VerbResetPrinter:   flag(),
-		VerbReset:          flag(),
 		VerbPower:          flag(),
 		// Optional, and on when left out, so the button alone switches the
 		// printer on.
@@ -267,7 +263,7 @@ func probe(m machine, resolved connectorapi.Set) connectorapi.Set {
 	// Every Klipper machine answers a status query, runs a G-code script,
 	// restarts its firmware and serves its gcodes folder.
 	carry(claimed, resolved,
-		VerbSendStateInfo, VerbSendGcode, ArgGcode, VerbResetPrinter, VerbReset,
+		VerbSendStateInfo, VerbSendGcode, ArgGcode, VerbResetPrinter,
 		VerbSendInfo, VerbSendFileInfo, ArgFileInfoPath,
 		VerbCreateFolder, ArgCreateFolderPath, VerbDeleteFile, ArgDeleteFilePath,
 		VerbDeleteFolder, ArgDeleteFolderPath, FeatureUpload)
@@ -405,8 +401,6 @@ func methodFor(verb connectorapi.Capability) (method string, ok bool) {
 		return methodPrintCancel, true
 	case VerbResetPrinter:
 		return methodFirmwareRestart, true
-	case VerbReset:
-		return methodRestart, true
 	default:
 		return "", false
 	}

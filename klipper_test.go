@@ -132,14 +132,13 @@ func TestCommandsBecomeKlipperGcode(t *testing.T) {
 	}
 }
 
-func TestTheTwoRestarts(t *testing.T) {
+func TestResetPrinterIsAFirmwareRestart(t *testing.T) {
 	t.Parallel()
 
 	host := startMachine(t, klippersim.Options{})
 	s := connect(t, host)
 
 	for verb, method := range map[connectorapi.Capability]string{
-		klipper.VerbReset:        "printer.restart",
 		klipper.VerbResetPrinter: "printer.firmware_restart",
 	} {
 		result, err := s.Do(t.Context(), connectorapi.Command{Verb: verb})

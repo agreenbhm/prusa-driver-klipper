@@ -18,7 +18,6 @@ const (
 	methodPrintCancel      = "printer.print.cancel"
 	methodGcodeScript      = "printer.gcode.script"
 	methodFirmwareRestart  = "printer.firmware_restart"
-	methodRestart          = "printer.restart"
 
 	methodPowerDevices = "machine.device_power.devices"
 	methodPowerPost    = "machine.device_power.post_device"
